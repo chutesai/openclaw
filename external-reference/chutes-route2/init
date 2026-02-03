@@ -1,0 +1,18 @@
+#!/bin/sh
+set -eu
+
+# Chutes x OpenClaw Unified Bootstrapper
+# This script detects your OS and runs the appropriate installer.
+
+case "$(uname -s)" in
+  MINGW*|CYGWIN*|MSYS*|NT*)
+    # Windows environment (Git Bash, Cygwin, etc.)
+    echo "Windows detected. Launching PowerShell installer..."
+    # Note: We use -ExecutionPolicy Bypass to ensure the script can run
+    curl -fsSL https://chutes.ai/openclaw/init.ps1 | powershell -ExecutionPolicy Bypass -File - "$@"
+    ;;
+  *)
+    # macOS, Linux, and others
+    curl -fsSL https://chutes.ai/openclaw/init.sh | bash -s -- "$@"
+    ;;
+esac

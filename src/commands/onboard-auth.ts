@@ -20,8 +20,6 @@ export {
   applyXiaomiConfig,
   applyXiaomiProviderConfig,
   applyZaiConfig,
-  applyChutesConfig,
-  applyChutesProviderConfig,
 } from "./onboard-auth.config-core.js";
 export {
   applyMinimaxApiConfig,

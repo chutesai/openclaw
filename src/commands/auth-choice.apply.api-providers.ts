@@ -30,6 +30,8 @@ import {
   applyXiaomiConfig,
   applyXiaomiProviderConfig,
   applyZaiConfig,
+  applyChutesConfig,
+  applyChutesProviderConfig,
   KIMI_CODING_MODEL_REF,
   MOONSHOT_DEFAULT_MODEL_REF,
   OPENROUTER_DEFAULT_MODEL_REF,
@@ -47,6 +49,7 @@ import {
   setVercelAiGatewayApiKey,
   setXiaomiApiKey,
   setZaiApiKey,
+  setChutesApiKey,
   ZAI_DEFAULT_MODEL_REF,
 } from "./onboard-auth.js";
 import { OPENCODE_ZEN_DEFAULT_MODEL } from "./opencode-zen-model-default.js";
@@ -96,6 +99,8 @@ export async function applyAuthChoiceApiProviders(
       authChoice = "venice-api-key";
     } else if (params.opts.tokenProvider === "opencode") {
       authChoice = "opencode-zen";
+    } else if (params.opts.tokenProvider === "chutes") {
+      authChoice = "chutes-api-key";
     }
   }
 
@@ -174,6 +179,7 @@ export async function applyAuthChoiceApiProviders(
       nextConfig = applied.config;
       agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
     }
+
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -226,6 +232,7 @@ export async function applyAuthChoiceApiProviders(
       nextConfig = applied.config;
       agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
     }
+
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -273,6 +280,7 @@ export async function applyAuthChoiceApiProviders(
       nextConfig = applied.config;
       agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
     }
+
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -334,6 +342,7 @@ export async function applyAuthChoiceApiProviders(
       nextConfig = applied.config;
       agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
     }
+
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -381,6 +390,7 @@ export async function applyAuthChoiceApiProviders(
       agentModelOverride = GOOGLE_GEMINI_DEFAULT_MODEL;
       await noteAgentModel(GOOGLE_GEMINI_DEFAULT_MODEL);
     }
+
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -444,6 +454,7 @@ export async function applyAuthChoiceApiProviders(
       nextConfig = applied.config;
       agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
     }
+
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -492,6 +503,7 @@ export async function applyAuthChoiceApiProviders(
       nextConfig = applied.config;
       agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
     }
+
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -524,6 +536,7 @@ export async function applyAuthChoiceApiProviders(
       nextConfig = applied.config;
       agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
     }
+
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -583,6 +596,7 @@ export async function applyAuthChoiceApiProviders(
       nextConfig = applied.config;
       agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
     }
+
     return { config: nextConfig, agentModelOverride };
   }
 
@@ -640,6 +654,55 @@ export async function applyAuthChoiceApiProviders(
       nextConfig = applied.config;
       agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
     }
+
+    return { config: nextConfig, agentModelOverride };
+  }
+
+  if (authChoice === "chutes-api-key") {
+    let hasCredential = false;
+    if (!hasCredential && params.opts?.token && params.opts?.tokenProvider === "chutes") {
+      await setChutesApiKey(normalizeApiKeyInput(params.opts.token), params.agentDir);
+      hasCredential = true;
+    }
+
+    const envKey = resolveEnvApiKey("chutes");
+    if (!hasCredential && envKey) {
+      const useExisting = await params.prompter.confirm({
+        message: `Use existing CHUTES_API_KEY (env, ${formatApiKeyPreview(envKey.apiKey)})?`,
+        initialValue: true,
+      });
+      if (useExisting) {
+        await setChutesApiKey(envKey.apiKey, params.agentDir);
+        hasCredential = true;
+      }
+    }
+
+    if (!hasCredential) {
+      const key = await params.prompter.text({
+        message: "Enter Chutes API key",
+        validate: validateApiKeyInput,
+      });
+      await setChutesApiKey(normalizeApiKeyInput(String(key)), params.agentDir);
+    }
+
+    nextConfig = applyAuthProfileConfig(nextConfig, {
+      profileId: "chutes:default",
+      provider: "chutes",
+      mode: "api_key",
+    });
+
+    const applied = await applyDefaultModelChoice({
+      config: nextConfig,
+      setDefaultModel: params.setDefaultModel,
+      defaultModel: "chutes/zai-org/GLM-4.7-Flash",
+      applyDefaultConfig: applyChutesConfig,
+      applyProviderConfig: applyChutesProviderConfig,
+      noteAgentModel,
+      prompter: params.prompter,
+    });
+    nextConfig = applied.config;
+    agentModelOverride = applied.agentModelOverride ?? agentModelOverride;
+
     return { config: nextConfig, agentModelOverride };
   }
 

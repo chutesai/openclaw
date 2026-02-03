@@ -178,3 +178,15 @@ export async function setOpencodeZenApiKey(key: string, agentDir?: string) {
     agentDir: resolveAuthAgentDir(agentDir),
   });
 }
+
+export async function setChutesApiKey(key: string, agentDir?: string) {
+  upsertAuthProfile({
+    profileId: "chutes:default",
+    credential: {
+      type: "api_key",
+      provider: "chutes",
+      key,
+    },
+    agentDir: resolveAuthAgentDir(agentDir),
+  });
+}

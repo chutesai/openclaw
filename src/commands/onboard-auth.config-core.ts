@@ -505,3 +505,43 @@ export function applyAuthProfileConfig(
     },
   };
 }
+
+export function applyChutesProviderConfig(cfg: OpenClawConfig): OpenClawConfig {
+  const providers = { ...cfg.models?.providers };
+  providers.chutes = {
+    ...providers.chutes,
+    baseUrl: "https://llm.chutes.ai/v1",
+    api: "openai-completions",
+    auth: "api-key",
+    models: providers.chutes?.models || [],
+  };
+
+  return {
+    ...cfg,
+    models: {
+      ...cfg.models,
+      mode: cfg.models?.mode ?? "merge",
+      providers,
+    },
+  };
+}
+
+export function applyChutesConfig(cfg: OpenClawConfig): OpenClawConfig {
+  const next = applyChutesProviderConfig(cfg);
+  const existingModel = next.agents?.defaults?.model;
+  return {
+    ...next,
+    agents: {
+      ...next.agents,
+      defaults: {
+        ...next.agents?.defaults,
+        model: {
+          ...(existingModel && typeof existingModel === "object" && "fallbacks" in existingModel
+            ? { fallbacks: (existingModel as { fallbacks?: string[] }).fallbacks }
+            : {}),
+          primary: "chutes/zai-org/GLM-4.7-Flash",
+        },
+      },
+    },
+  };
+}

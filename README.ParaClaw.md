@@ -28,6 +28,42 @@ curl -fsSL https://chutes.ai/openclaw/init | sh
 - **macOS/Linux**: `curl -fsSL https://chutes.ai/openclaw/init.sh | bash`
 - **Windows (PowerShell)**: `curl -fsSL https://chutes.ai/openclaw/init.ps1 | powershell -ExecutionPolicy Bypass -File -`
 
+---
+
+## Local Development & Testing
+
+If you are a developer or tester working on this branch, you can run the bootstrap logic directly from your local clone to verify changes before they go live.
+
+### 1. Initial Setup
+Clone the repository and switch to the development branch:
+```bash
+git clone https://github.com/openclaw/openclaw.git
+cd openclaw
+git checkout ParaClaw
+```
+
+### 2. Run the Bootstrap
+Run the installer directly from the reference folder:
+
+**macOS / Linux / WSL / Git Bash:**
+```bash
+bash external-reference/chutes-route2/init.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+.\external-reference\chutes-route2\init.ps1
+```
+
+### 3. Clean Testing (Reset)
+To test the "New User" journey multiple times, use the provided reset script to completely wipe your local OpenClaw environment:
+```bash
+# This will uninstall OpenClaw and delete ~/.openclaw
+bash external-reference/chutes-route2/reset.sh
+```
+
+---
+
 ## Hardening Features
 
 - **Reliability**: Monitors Gateway health during startup and automatically tails logs if initialization fails.

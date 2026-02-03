@@ -250,6 +250,17 @@ run();' 2>"${TEMP_DIR}/chutes-fetch-error.log" || echo "")
 
   # 2. Apply agent defaults
   AGENT_DEFAULTS=$(node -e "
+    const modelsJson = $MODELS_JSON;
+    const modelEntries = {};
+    // Add all discovered models to the allowlist
+    modelsJson.forEach(m => {
+      modelEntries['chutes/' + m.id] = {};
+    });
+    // Add aliases
+    modelEntries['chutes-fast'] = { alias: '$CHUTES_DEFAULT_MODEL_REF' };
+    modelEntries['chutes-vision'] = { alias: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506' };
+    modelEntries['chutes-pro'] = { alias: 'chutes/deepseek-ai/DeepSeek-V3.2-TEE' };
+
     const config = {
       model: {
         primary: '$CHUTES_DEFAULT_MODEL_REF',
@@ -259,11 +270,7 @@ run();' 2>"${TEMP_DIR}/chutes-fetch-error.log" || echo "")
         primary: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506',
         fallbacks: ['chutes/Qwen/Qwen3-32B']
       },
-      models: {
-        'chutes-fast': { alias: '$CHUTES_DEFAULT_MODEL_REF' },
-        'chutes-vision': { alias: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506' },
-        'chutes-pro': { alias: 'chutes/deepseek-ai/DeepSeek-V3.2-TEE' }
-      }
+      models: modelEntries
     };
     console.log(JSON.stringify(config));
   ")

@@ -120,7 +120,6 @@ function Add-ChutesAuth {
         openclaw models auth paste-token --provider chutes
         
         # Secret redaction: Attempt to wipe the lines from terminal history
-        # Clack prompts are usually ~8-10 lines.
         Write-Host -NoNewline "$([char]27)[12A$([char]27)[J"
     }
     Log-Success "Chutes authentication added (secret hidden)."
@@ -163,7 +162,28 @@ run();
     $providerConfig = node -e "console.log(JSON.stringify({baseUrl: '$CHUTES_BASE_URL', api: 'openai-completions', auth: 'api-key', models: $modelsJson}))"
     openclaw config set models.providers.chutes --json $providerConfig 2>$null
 
-    $agentDefaults = node -e "console.log(JSON.stringify({model: {primary: '$CHUTES_DEFAULT_MODEL_REF', fallbacks: ['chutes/deepseek-ai/DeepSeek-V3.2-TEE', 'chutes/Qwen/Qwen3-32B']}, imageModel: {primary: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506', fallbacks: ['chutes/Qwen/Qwen3-32B']}, models: {'chutes-fast': {alias: '$CHUTES_DEFAULT_MODEL_REF'}, 'chutes-vision': {alias: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506'}, 'chutes-pro': {alias: 'chutes/deepseek-ai/DeepSeek-V3.2-TEE'}}}))"
+    $agentDefaults = node -e @"
+    const modelsJson = $modelsJson;
+    const modelEntries = {};
+    modelsJson.forEach(m => {
+      modelEntries['chutes/' + m.id] = {};
+    });
+    modelEntries['chutes-fast'] = { alias: '$CHUTES_DEFAULT_MODEL_REF' };
+    modelEntries['chutes-vision'] = { alias: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506' };
+    modelEntries['chutes-pro'] = { alias: 'chutes/deepseek-ai/DeepSeek-V3.2-TEE' };
+
+    console.log(JSON.stringify({
+      model: {
+        primary: '$CHUTES_DEFAULT_MODEL_REF',
+        fallbacks: ['chutes/deepseek-ai/DeepSeek-V3.2-TEE', 'chutes/Qwen/Qwen3-32B']
+      },
+      imageModel: {
+        primary: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506',
+        fallbacks: ['chutes/Qwen/Qwen3-32B']
+      },
+      models: modelEntries
+    }));
+"@
     openclaw config set agents.defaults --json $agentDefaults 2>$null
 
     openclaw config set auth.profiles.`"chutes:manual`" --json '{"provider":"chutes","mode":"api_key"}' 2>$null

@@ -33,8 +33,10 @@ fi
 
 # Constants
 CHUTES_BASE_URL="https://llm.chutes.ai/v1"
-CHUTES_DEFAULT_MODEL_ID="zai-org/GLM-4.7-Flash"
-CHUTES_DEFAULT_MODEL_REF="chutes/zai-org/GLM-4.7-Flash"
+CHUTES_DEFAULT_MODEL_ID="zai-org/GLM-4.7-TEE"
+CHUTES_DEFAULT_MODEL_REF="chutes/zai-org/GLM-4.7-TEE"
+CHUTES_FAST_MODEL_ID="zai-org/GLM-4.7-Flash"
+CHUTES_FAST_MODEL_REF="chutes/zai-org/GLM-4.7-Flash"
 GATEWAY_PORT=18789
 
 # Helper functions
@@ -56,6 +58,129 @@ show_progress() {
     printf "\b\b\b\b\b\b"
   done
   printf "    \b\b\b\b"
+}
+
+# Guard against onboarding CLI hanging after completion
+start_onboard_exit_guard() {
+  local log_file="$1"
+  local pid_file="$2"
+  local max_wait="${3:-3600}"
+  local flag_file="${4:-}"
+  (
+    local pid=""
+    local waited=0
+    while [ "$waited" -lt "$max_wait" ]; do
+      if [ -z "$pid" ] && [ -s "$pid_file" ]; then
+        pid=$(cat "$pid_file" 2>/dev/null || echo "")
+      fi
+      if [ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null; then
+        exit 0
+      fi
+      if [ -f "$log_file" ]; then
+        if tail -n 200 "$log_file" | LC_ALL=C grep -a -q "Onboarding complete." 2>/dev/null; then
+          sleep 1
+          if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            if [ -n "$flag_file" ]; then
+              echo "killed" > "$flag_file"
+            fi
+            kill "$pid" 2>/dev/null || true
+            sleep 1
+            kill -9 "$pid" 2>/dev/null || true
+          fi
+          exit 0
+        fi
+      fi
+      sleep 1
+      waited=$((waited + 1))
+    done
+  ) &
+  ONBOARD_GUARD_PID=$!
+}
+
+run_interactive_onboarding() {
+  local onboard_log="${TEMP_DIR}/openclaw-onboard.log"
+  local onboard_pid_file="${TEMP_DIR}/openclaw-onboard.pid"
+  local onboard_guard_flag="${TEMP_DIR}/openclaw-onboard.guard"
+  : > "$onboard_log"
+  rm -f "$onboard_pid_file"
+  rm -f "$onboard_guard_flag"
+  export OPENCLAW_ONBOARD_PID_FILE="$onboard_pid_file"
+
+  local onboard_cmd='echo $$ > "$OPENCLAW_ONBOARD_PID_FILE"; exec openclaw onboard --auth-choice skip --skip-ui'
+  local onboard_exit=0
+  local script_mode="none"
+  local script_flush_flag=""
+  if command -v script >/dev/null 2>&1; then
+    if script -q -c "true" /dev/null >/dev/null 2>&1; then
+      script_mode="linux"
+      if script -q -f -c "true" /dev/null >/dev/null 2>&1; then
+        script_flush_flag="-f"
+      fi
+    elif script -q /dev/null true >/dev/null 2>&1; then
+      script_mode="bsd"
+      if script -q -F /dev/null true >/dev/null 2>&1; then
+        script_flush_flag="-F"
+      elif script -q -f /dev/null true >/dev/null 2>&1; then
+        script_flush_flag="-f"
+      fi
+    fi
+
+    if [ "$script_mode" != "none" ]; then
+      start_onboard_exit_guard "$onboard_log" "$onboard_pid_file" "3600" "$onboard_guard_flag"
+      set +e
+      if [ "$script_mode" = "linux" ]; then
+        if [ -n "$script_flush_flag" ]; then
+          script -q "$script_flush_flag" -c "bash -c '$onboard_cmd'" "$onboard_log"
+        else
+          script -q -c "bash -c '$onboard_cmd'" "$onboard_log"
+        fi
+      else
+        if [ -n "$script_flush_flag" ]; then
+          script -q "$script_flush_flag" "$onboard_log" bash -c "$onboard_cmd"
+        else
+          script -q "$onboard_log" bash -c "$onboard_cmd"
+        fi
+      fi
+      onboard_exit=$?
+      set -e
+    else
+      log_warn "script(1) is unavailable for interactive capture; running onboarding without hang guard."
+      echo $$ > "$onboard_pid_file"
+      set +e
+      openclaw onboard --auth-choice skip --skip-ui
+      onboard_exit=$?
+      set -e
+    fi
+  else
+    log_warn "script(1) not found; running onboarding without hang guard."
+    echo $$ > "$onboard_pid_file"
+    set +e
+    openclaw onboard --auth-choice skip --skip-ui
+    onboard_exit=$?
+    set -e
+  fi
+
+  if [ -n "${ONBOARD_GUARD_PID:-}" ]; then
+    kill "$ONBOARD_GUARD_PID" 2>/dev/null || true
+    wait "$ONBOARD_GUARD_PID" 2>/dev/null || true
+  fi
+  if [ -t 0 ]; then
+    stty sane 2>/dev/null || true
+  fi
+
+  if [ "$onboard_exit" -ne 0 ]; then
+    local onboard_completed=0
+    if [ -f "$onboard_guard_flag" ]; then
+      onboard_completed=1
+    elif LC_ALL=C grep -a -q "Onboarding complete." "$onboard_log" 2>/dev/null; then
+      onboard_completed=1
+    fi
+    if [ "$onboard_completed" -eq 1 ]; then
+      log_info "Onboarding complete. Continuing setup..."
+      return 0
+    fi
+    return "$onboard_exit"
+  fi
 }
 
 # Portable temp directory and log path
@@ -234,7 +359,7 @@ run();' 2>"${TEMP_DIR}/chutes-fetch-error.log" || echo "")
       log_warn "Failed to fetch dynamic model list: $(cat "${TEMP_DIR}/chutes-fetch-error.log")"
     fi
     log_warn "Using a minimal default list."
-    MODELS_JSON='[{"id":"zai-org/GLM-4.7-Flash","name":"GLM 4.7 Flash","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":4096}]'
+    MODELS_JSON='[{"id":"zai-org/GLM-4.7-TEE","name":"GLM 4.7 TEE","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":4096},{"id":"zai-org/GLM-4.7-Flash","name":"GLM 4.7 Flash","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":4096}]'
   fi
 
   log_info "Applying Chutes configuration (Providers, Models, Vision, and Aliases)..."
@@ -260,7 +385,7 @@ run();' 2>"${TEMP_DIR}/chutes-fetch-error.log" || echo "")
       modelEntries['chutes/' + m.id] = {};
     });
     // Add aliases
-    modelEntries['chutes-fast'] = { alias: '$CHUTES_DEFAULT_MODEL_REF' };
+    modelEntries['chutes-fast'] = { alias: '$CHUTES_FAST_MODEL_REF' };
     modelEntries['chutes-vision'] = { alias: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506' };
     modelEntries['chutes-pro'] = { alias: 'chutes/deepseek-ai/DeepSeek-V3.2-TEE' };
 
@@ -376,7 +501,7 @@ show_summary_card() {
   printf "   %-18s %s\n" "Gateway URL:" "http://localhost:$GATEWAY_PORT"
   printf "   %-18s %s\n" "Control UI:" "openclaw dashboard"
   printf "   %-18s %s\n" "Active Provider:" "Chutes AI"
-  printf "   %-18s %s\n" "Primary Model:" "chutes/zai-org/GLM-4.7-Flash"
+  printf "   %-18s %s\n" "Primary Model:" "chutes/zai-org/GLM-4.7-TEE"
   printf "   %-18s %s\n" "Vision Model:" "chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506"
   printf "   %-18s %s\n" "Aliases:" "chutes-fast, chutes-pro, chutes-vision"
   echo "----------------------------------------------------------------------"
@@ -430,7 +555,7 @@ main() {
       log_info "Launching OpenClaw interactive onboarding..."
       log_info "Your Chutes configuration has been pre-seeded."
       # Use --skip-ui to prevent the wizard from launching the TUI/Web UI prematurely.
-      openclaw onboard --auth-choice skip --skip-ui
+    run_interactive_onboarding
     else
       log_warn "Non-interactive environment detected. Skipping interactive onboarding."
       log_info "You can complete onboarding later by running: openclaw onboard"

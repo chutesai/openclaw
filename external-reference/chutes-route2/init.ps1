@@ -15,7 +15,8 @@ foreach ($arg in $args) {
 
 # Constants
 $CHUTES_BASE_URL = "https://llm.chutes.ai/v1"
-$CHUTES_DEFAULT_MODEL_REF = "chutes/zai-org/GLM-4.7-Flash"
+$CHUTES_DEFAULT_MODEL_REF = "chutes/zai-org/GLM-4.7-TEE"
+$CHUTES_FAST_MODEL_REF = "chutes/zai-org/GLM-4.7-Flash"
 $GATEWAY_PORT = 18789
 
 # Helper functions
@@ -101,6 +102,75 @@ function Add-ChutesAuth {
     Log-Success "Chutes authentication added."
 }
 
+function Start-OnboardingWithGuard {
+    $onboardLog = Join-Path $env:TEMP "openclaw-onboard.log"
+    $onboardFlag = Join-Path $env:TEMP "openclaw-onboard.guard"
+    Remove-Item $onboardLog -Force -ErrorAction SilentlyContinue
+    Remove-Item $onboardFlag -Force -ErrorAction SilentlyContinue
+
+    $transcriptStarted = $false
+    try {
+        Start-Transcript -Path $onboardLog -Append | Out-Null
+        $transcriptStarted = $true
+    } catch {}
+
+    $proc = $null
+    try {
+        $proc = Start-Process openclaw -ArgumentList "onboard --auth-choice skip --skip-ui" -NoNewWindow -PassThru
+    } catch {
+        openclaw onboard --auth-choice skip --skip-ui
+        if ($transcriptStarted) { try { Stop-Transcript | Out-Null } catch {} }
+        return
+    }
+
+    $guard = Start-Job -ScriptBlock {
+        param($logPath, $pid, $flagPath)
+        $elapsed = 0
+        $maxWait = 3600
+        while ($elapsed -lt $maxWait) {
+            if (-not (Get-Process -Id $pid -ErrorAction SilentlyContinue)) { return }
+            if (Test-Path $logPath) {
+                try {
+                    $tail = Get-Content -Path $logPath -Tail 200 -ErrorAction SilentlyContinue
+                    if ($tail -match "Onboarding complete.") {
+                        Start-Sleep -Seconds 1
+                        if (Get-Process -Id $pid -ErrorAction SilentlyContinue) {
+                            "killed" | Set-Content -Path $flagPath -Force
+                            Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+                        }
+                        return
+                    }
+                } catch {}
+            }
+            Start-Sleep -Seconds 1
+            $elapsed++
+        }
+    } -ArgumentList $onboardLog, $proc.Id, $onboardFlag
+
+    $proc.WaitForExit()
+    $exitCode = $proc.ExitCode
+
+    if ($guard) { Stop-Job $guard -ErrorAction SilentlyContinue; Remove-Job $guard -ErrorAction SilentlyContinue }
+    if ($transcriptStarted) { try { Stop-Transcript | Out-Null } catch {} }
+
+    if ($exitCode -ne 0) {
+        $completed = $false
+        if (Test-Path $onboardFlag) {
+            $completed = $true
+        } elseif (Test-Path $onboardLog) {
+            try {
+                $content = Get-Content -Path $onboardLog -Raw -ErrorAction SilentlyContinue
+                if ($content -match "Onboarding complete.") { $completed = $true }
+            } catch {}
+        }
+        if ($completed) {
+            Log-Info "Onboarding complete. Continuing setup..."
+            return
+        }
+        throw "Onboarding exited with code $exitCode."
+    }
+}
+
 function Apply-AtomicConfig {
     Log-Info "Fetching latest model list from Chutes API..."
     $modelsJson = node -e @"
@@ -125,7 +195,7 @@ run();
 "@
     if (!$modelsJson) {
         log-warn "Using defaults."
-        $modelsJson = '[{"id":"zai-org/GLM-4.7-Flash","name":"GLM 4.7 Flash","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":4096}]'
+        $modelsJson = '[{"id":"zai-org/GLM-4.7-TEE","name":"GLM 4.7 TEE","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":4096},{"id":"zai-org/GLM-4.7-Flash","name":"GLM 4.7 Flash","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":4096}]'
     }
 
     Log-Info "Applying configuration suite..."
@@ -136,7 +206,7 @@ run();
     const modelsJson = $modelsJson;
     const modelEntries = {};
     modelsJson.forEach(m => { modelEntries['chutes/' + m.id] = {}; });
-    modelEntries['chutes-fast'] = { alias: '$CHUTES_DEFAULT_MODEL_REF' };
+    modelEntries['chutes-fast'] = { alias: '$CHUTES_FAST_MODEL_REF' };
     modelEntries['chutes-vision'] = { alias: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506' };
     modelEntries['chutes-pro'] = { alias: 'chutes/deepseek-ai/DeepSeek-V3.2-TEE' };
     console.log(JSON.stringify({
@@ -209,7 +279,7 @@ try {
         Add-ChutesAuth
         Apply-AtomicConfig
         Log-Info "Launching interactive onboarding..."
-        openclaw onboard --auth-choice skip --skip-ui
+        Start-OnboardingWithGuard
     } else {
         Log-Info "Existing user journey detected..."
         Add-ChutesAuth

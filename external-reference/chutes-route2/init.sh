@@ -20,12 +20,14 @@ if [ "$USE_COLOR" = true ]; then
   GREEN='\033[0;32m'
   YELLOW='\033[1;33m'
   BLUE='\033[0;34m'
+  WHITE='\033[1;37m'
   NC='\033[0m' # No Color
 else
   RED=''
   GREEN=''
   YELLOW=''
   BLUE=''
+  WHITE=''
   NC=''
 fi
 
@@ -155,6 +157,7 @@ seed_initial_config() {
   # Ensure gateway mode is set to local
   CURRENT_MODE=$(openclaw config get gateway.mode 2>/dev/null || echo "unset")
   if [ "$CURRENT_MODE" != "local" ] && [ "$CURRENT_MODE" != "remote" ]; then
+    log_info "Setting gateway mode to local..."
     openclaw config set gateway.mode local >/dev/null 2>&1
   fi
 }
@@ -296,6 +299,7 @@ start_gateway() {
   log_info "Starting OpenClaw gateway..."
   # Redirect to a portable log path
   nohup openclaw gateway run --bind loopback --port "$GATEWAY_PORT" > "$GATEWAY_LOG" 2>&1 &
+  local gateway_pid=$!
   
   # Wait for gateway to start
   log_info "Waiting for gateway initialization..."
@@ -399,13 +403,12 @@ main() {
     fi
   fi
 
-  echo -e "${GREEN}"
-  echo "   ______ __             __               ___    ____ "
-  echo "  / ____// /_   __  __  / /_ ___   _____ /   |  /  _/ "
-  echo " / /    / __ \ / / / / / __// _ \ / ___// /| |  / /   "
-  echo "/ /___ / / / // /_/ / / /_ /  __/(__  )/ ___ |_/ /    "
-  echo "\____//_/ /_/ \__,_/  \__/ \___//____//_/  |_/___/    "
-  echo -e "      🚀 x OpenClaw${NC}"
+  echo -e "${WHITE}   ___                  ${RED}___ _                "
+  echo -e "${WHITE}  / _ \\\\__ _ _ __ __ _  ${RED}/ __\\\\ | __ ___      __"
+  echo -e "${WHITE} / /_)/ _\` | '__/ _\` |${RED}/ /  | |/ _\` \\\\ \\\\ /\\\\ / /"
+  echo -e "${WHITE}/ ___/ (_| | | | (_| ${RED}/ /___| | (_| |\\\\ V  V / "
+  echo -e "${WHITE}\\\\/    \\\\__,_|_|  \\\\__,_${RED}\\\\____/|_|\\\\__,_| \\\\_/\\\\_/  "
+  echo -e "          ${NC}OpenClaw X Chutes.ai"
   echo ""
   
   check_node_version

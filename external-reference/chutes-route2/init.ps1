@@ -15,7 +15,6 @@ foreach ($arg in $args) {
 
 # Constants
 $CHUTES_BASE_URL = "https://llm.chutes.ai/v1"
-$CHUTES_DEFAULT_MODEL_ID = "zai-org/GLM-4.7-Flash"
 $CHUTES_DEFAULT_MODEL_REF = "chutes/zai-org/GLM-4.7-Flash"
 $GATEWAY_PORT = 18789
 
@@ -46,48 +45,34 @@ function Check-NodeVersion {
     if (!(Get-Command npm -ErrorAction SilentlyContinue)) {
         Log-Error "npm is not installed. OpenClaw requires npm for global installation. Please install Node.js which includes npm."
     }
-
     $nodeVer = node -v
     $major = [int]($nodeVer -replace 'v', '' -split '\.')[0]
-    if ($major -lt 22) {
-        Log-Error "Node.js version $nodeVer is too old. OpenClaw requires Node.js 22+."
-    }
-    Log-Success "Node.js version $nodeVer detected."
+    if ($major -lt 22) { Log-Error "Node.js version $nodeVer is too old. Need Node.js 22+." }
+    Log-Success "Node.js version $nodeVer OK."
 }
 
 function Check-OpenClawInstalled {
     if (Get-Command openclaw -ErrorAction SilentlyContinue) {
-        try {
-            openclaw --version | Out-Null
-            return $true
-        } catch {
-            Log-Warn "OpenClaw found but failed to start."
-            return $false
-        }
+        try { openclaw --version | Out-Null; return $true } catch { return $false }
     }
     return $false
 }
 
 function Install-OpenClaw {
     Log-Info "Installing OpenClaw globally..."
+    npm uninstall -g openclaw 2>$null
     npm install -g openclaw@latest long@latest
-    if (!(Check-OpenClawInstalled)) {
-        Log-Error "Failed to verify OpenClaw installation."
-    }
+    if (!(Check-OpenClawInstalled)) { Log-Error "Failed to verify OpenClaw installation." }
     Log-Success "OpenClaw installed."
 }
 
 function Seed-InitialConfig {
-    Log-Info "Ensuring OpenClaw configuration..."
-    $configPath = Join-Path $HOME ".openclaw\openclaw.json"
-    if (!(Test-Path $configPath)) {
-        Log-Info "No configuration found. Running openclaw onboarding..."
+    if (!(Test-Path (Join-Path $HOME ".openclaw\openclaw.json"))) {
+        Log-Info "Initializing OpenClaw config..."
         openclaw onboard --non-interactive --accept-risk --auth-choice skip 2>$null
     }
-    
     $mode = openclaw config get gateway.mode 2>$null
     if ($mode -ne "local" -and $mode -ne "remote") {
-        Log-Info "Setting gateway mode to local..."
         openclaw config set gateway.mode local 2>$null
     }
 }
@@ -98,31 +83,22 @@ function Add-ChutesAuth {
     $hasAuth = $false
     if ($status.auth.providers) {
         foreach ($p in $status.auth.providers) {
-            if ($p.provider -eq "chutes" -and $p.profiles.count -gt 0) {
-                $hasAuth = $true; break
-            }
+            if ($p.provider -eq "chutes" -and $p.profiles.count -gt 0) { $hasAuth = $true; break }
         }
     }
-    if ($status.auth.shellEnvFallback.appliedKeys -contains "CHUTES_API_KEY") {
-        $hasAuth = $true
-    }
+    if ($status.auth.shellEnvFallback.appliedKeys -contains "CHUTES_API_KEY") { $hasAuth = $true }
 
-    if ($hasAuth) {
-        Log-Success "Chutes authentication already configured."
-        return
-    }
+    if ($hasAuth) { Log-Success "Chutes authentication already configured."; return }
 
     if ($env:CHUTES_API_KEY) {
-        Log-Info "Using Chutes API key found in environment variable."
+        Log-Info "Using CHUTES_API_KEY from environment."
         $env:CHUTES_API_KEY | openclaw models auth paste-token --provider chutes 2>$null
     } else {
         Log-Info "Redirecting to OpenClaw's official auth helper..."
         openclaw models auth paste-token --provider chutes
-        
-        # Secret redaction: Attempt to wipe the lines from terminal history
         Write-Host -NoNewline "$([char]27)[12A$([char]27)[J"
     }
-    Log-Success "Chutes authentication added (secret hidden)."
+    Log-Success "Chutes authentication added."
 }
 
 function Apply-AtomicConfig {
@@ -138,12 +114,7 @@ async function run() {
       name: m.id,
       reasoning: m.supported_features?.includes('reasoning') || false,
       input: (m.input_modalities || ['text']).filter(i => i === 'text' || i === 'image'),
-      cost: {
-        input: m.pricing?.prompt || 0,
-        output: m.pricing?.completion || 0,
-        cacheRead: 0,
-        cacheWrite: 0
-      },
+      cost: { input: m.pricing?.prompt || 0, output: m.pricing?.completion || 0, cacheRead: 0, cacheWrite: 0 },
       contextWindow: m.context_length || 128000,
       maxTokens: m.max_output_length || 4096
     }));
@@ -152,9 +123,8 @@ async function run() {
 }
 run();
 "@
-
     if (!$modelsJson) {
-        Log-Warn "Failed to fetch dynamic model list. Using defaults."
+        log-warn "Using defaults."
         $modelsJson = '[{"id":"zai-org/GLM-4.7-Flash","name":"GLM 4.7 Flash","reasoning":false,"input":["text"],"cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"contextWindow":128000,"maxTokens":4096}]'
     }
 
@@ -165,34 +135,23 @@ run();
     $agentDefaults = node -e @"
     const modelsJson = $modelsJson;
     const modelEntries = {};
-    modelsJson.forEach(m => {
-      modelEntries['chutes/' + m.id] = {};
-    });
+    modelsJson.forEach(m => { modelEntries['chutes/' + m.id] = {}; });
     modelEntries['chutes-fast'] = { alias: '$CHUTES_DEFAULT_MODEL_REF' };
     modelEntries['chutes-vision'] = { alias: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506' };
     modelEntries['chutes-pro'] = { alias: 'chutes/deepseek-ai/DeepSeek-V3.2-TEE' };
-
     console.log(JSON.stringify({
-      model: {
-        primary: '$CHUTES_DEFAULT_MODEL_REF',
-        fallbacks: ['chutes/deepseek-ai/DeepSeek-V3.2-TEE', 'chutes/Qwen/Qwen3-32B']
-      },
-      imageModel: {
-        primary: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506',
-        fallbacks: ['chutes/Qwen/Qwen3-32B']
-      },
+      model: { primary: '$CHUTES_DEFAULT_MODEL_REF', fallbacks: ['chutes/deepseek-ai/DeepSeek-V3.2-TEE', 'chutes/Qwen/Qwen3-32B'] },
+      imageModel: { primary: 'chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506', fallbacks: ['chutes/Qwen/Qwen3-32B'] },
       models: modelEntries
     }));
 "@
     openclaw config set agents.defaults --json $agentDefaults 2>$null
-
     openclaw config set auth.profiles.`"chutes:manual`" --json '{"provider":"chutes","mode":"api_key"}' 2>$null
-    Log-Success "Configuration applied."
+    Log-Success "Configuration applied (Allowlist open)."
 }
 
 function Start-Gateway {
-    Log-Info "Ensuring gateway is fresh..."
-    # Cross-version process killing (PS 5.1 and 7+)
+    Log-Info "Restarting Gateway..."
     $procs = if ($PSVersionTable.PSVersion.Major -ge 7) {
         Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*openclaw gateway*" }
     } else {
@@ -200,132 +159,67 @@ function Start-Gateway {
     }
     if ($procs) { $procs | Stop-Process -Force -Confirm:$false }
     Start-Sleep -s 1
-
-    Log-Info "Starting OpenClaw gateway..."
     $logPath = Join-Path $env:TEMP "openclaw-gateway.log"
     Start-Process openclaw -ArgumentList "gateway run --bind loopback --port $GATEWAY_PORT" -NoNewWindow -RedirectStandardOutput $logPath -RedirectStandardError $logPath
-    
-    Log-Info "Waiting for gateway initialization..."
-    $retries = 15
-    $count = 0
-    $success = $false
-    while ($count -lt $retries) {
-        Write-Host -NoNewline "."
-        try {
-            Invoke-RestMethod "http://127.0.0.1:$GATEWAY_PORT/health" -ErrorAction Stop | Out-Null
-            $success = $true
-            break
-        } catch {
-            Start-Sleep -s 1
-            $count++
-        }
+    $count = 0; $success = $false
+    while ($count -lt 15) {
+        try { Invoke-RestMethod "http://127.0.0.1:$GATEWAY_PORT/health" -ErrorAction Stop | Out-Null; $success = $true; break } catch { Start-Sleep -s 1; $count++; Write-Host -NoNewline "." }
     }
     Write-Host ""
-
-    if ($success) {
-        Start-Sleep -s 2
-        Log-Success "Gateway is ready."
-    } else {
-        Log-Warn "Gateway failed to start within timeout."
-        if (Test-Path $logPath) {
-            Write-Host "--- Last 20 lines of Gateway log ($logPath) ---" -ForegroundColor Gray
-            Get-Content $logPath -Tail 20
-            Write-Host "----------------------------------------------------" -ForegroundColor Gray
-        }
-        Log-Error "Setup cannot continue without a running Gateway."
-    }
+    if ($success) { Log-Success "Gateway ready." } else { Log-Error "Gateway failed. Check $logPath" }
 }
 
-function Verify-Setup {
-    Log-Info "Running unique verification test..."
-    
-    $ts = Get-Date -Format "HH:mm:ss"
-    $rand = Get-Random -Minimum 100 -Maximum 999
-    
-    if ($useColor) {
-        Write-Host "Prompting Chutes (Time: $ts, Salt: $rand)..." -ForegroundColor Yellow
-    } else {
-        Write-Host "Prompting Chutes (Time: $ts, Salt: $rand)..."
-    }
-    Write-Host ""
-    
-    try {
-        # Use --local to ensure we read the fresh config directly
-        openclaw agent --local --agent main --message "The secret code is $ts-$rand. Keep it short! In 2 sentences as a caffeinated space lobster, mention the code $ts-$rand and why Chutes is the best provider for OpenClaw." --thinking off 2>$null
-        Write-Host ""
-        Log-Success "Chutes responded! Setup verified and persistent."
-    } catch {
-        Log-Warn "Verification test turn failed. This can happen on fresh systems before first sync."
-    }
-}
-
-function Show-SummaryCard {
+function Show-Summary {
     $version = openclaw --version
-    $color = if ($useColor) { "Green" } else { "Default" }
-    
-    Write-Host "" -ForegroundColor $color
+    $color = if ($useColor) { "White" } else { "Default" }
     Write-Host "----------------------------------------------------------------------" -ForegroundColor $color
-    Write-Host "   🚀 Chutes AI x OpenClaw Instance Summary" -ForegroundColor $color
+    Write-Host "   🚀 ParaClaw Instance Summary (OpenClaw X Chutes)" -ForegroundColor Green
     Write-Host "----------------------------------------------------------------------" -ForegroundColor $color
     Write-Host "   Version:           $version" -ForegroundColor $color
     Write-Host "   Gateway URL:       http://localhost:$GATEWAY_PORT" -ForegroundColor $color
-    Write-Host "   Control UI:        openclaw dashboard" -ForegroundColor $color
-    Write-Host "   Active Provider:   Chutes AI" -ForegroundColor $color
-    Write-Host "   Primary Model:     chutes/zai-org/GLM-4.7-Flash" -ForegroundColor $color
+    Write-Host "   Primary Model:     $CHUTES_DEFAULT_MODEL_REF" -ForegroundColor $color
     Write-Host "   Vision Model:      chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506" -ForegroundColor $color
-    Write-Host "   Aliases:           chutes-fast, chutes-pro, chutes-vision" -ForegroundColor $color
     Write-Host "----------------------------------------------------------------------" -ForegroundColor $color
-    Write-Host "   Next Steps:" -ForegroundColor $color
-    Write-Host "   1. Chat with Agent:  openclaw agent -m ""Hello!""" -ForegroundColor $color
-    Write-Host "   2. Open TUI:         openclaw tui" -ForegroundColor $color
-    Write-Host "   3. Launch Dashboard: openclaw dashboard" -ForegroundColor $color
-    Write-Host "   4. Check Status:     openclaw status --all" -ForegroundColor $color
+    Write-Host "   Next Steps: 'openclaw tui' or 'openclaw dashboard'" -ForegroundColor $color
     Write-Host "----------------------------------------------------------------------" -ForegroundColor $color
 }
 
 # Main
 try {
-    $color = if ($useColor) { "Green" } else { "Default" }
-    Write-Host "   ______ __             __               ___    ____ " -ForegroundColor $color
-    Write-Host "  / ____// /_   __  __  / /_ ___   _____ /   |  /  _/ " -ForegroundColor $color
-    Write-Host " / /    / __ \ / / / / / __// _ \ / ___// /| |  / /   " -ForegroundColor $color
-    Write-Host "/ /___ / / / // /_/ / / /_ /  __/(__  )/ ___ |_/ /    " -ForegroundColor $color
-    Write-Host "\____//_/ /_/ \__,_/  \__/ \___//____//_/  |_/___/    " -ForegroundColor $color
-    Write-Host "      🚀 x OpenClaw" -ForegroundColor $color
-    Write-Host ""
-
+    $color = if ($useColor) { "White" } else { "Default" }
+    $color2 = if ($useColor) { "Red" } else { "Default" }
+    Write-Host -NoNewline "   ___                  " -ForegroundColor $color
+    Write-Host "___ _                " -ForegroundColor $color2
+    Write-Host -NoNewline "  / _ \__ _ _ __ __ _  " -ForegroundColor $color
+    Write-Host "/ __\ | __ ___      __" -ForegroundColor $color2
+    Write-Host -NoNewline " / /_)/ _` | '__/ _` |" -ForegroundColor $color
+    Write-Host "/ /  | |/ _` \ \ /\ / /" -ForegroundColor $color2
+    Write-Host -NoNewline "/ ___/ (_| | | | (_| " -ForegroundColor $color
+    Write-Host "/ /___| | (_| |\ V  V / " -ForegroundColor $color2
+    Write-Host -NoNewline "\/    \__,_|_|  \__,_" -ForegroundColor $color
+    Write-Host "\____/|_|\__,_| \_/\_/  " -ForegroundColor $color2
+    Write-Host "          OpenClaw X Chutes"
     Check-NodeVersion
-    $isNewUser = $false
-    if (!(Check-OpenClawInstalled) -or !(Test-Path (Join-Path $HOME ".openclaw\openclaw.json"))) {
-        $isNewUser = $true
-    }
-
-    if ($isNewUser) {
+    $isNew = $false
+    if (!(Check-OpenClawInstalled) -or !(Test-Path (Join-Path $HOME ".openclaw\openclaw.json"))) { $isNew = $true }
+    if ($isNew) {
         Log-Info "New user journey detected..."
         if (!(Check-OpenClawInstalled)) { Install-OpenClaw }
         Seed-InitialConfig
         Add-ChutesAuth
         Apply-AtomicConfig
-        Log-Info "Launching OpenClaw interactive onboarding..."
+        Log-Info "Launching interactive onboarding..."
         openclaw onboard --auth-choice skip --skip-ui
     } else {
         Log-Info "Existing user journey detected..."
         Add-ChutesAuth
         Apply-AtomicConfig
     }
-
     Start-Gateway
-    Verify-Setup
-    Show-SummaryCard
-
-    if ($isNewUser) {
-        $choice = Read-Host "Would you like to launch the TUI and talk to your bot now? (y/n)"
-        if ($choice -eq "y") {
-            openclaw tui --message "Wake up, my friend!"
-        }
+    Show-Summary
+    if ($isNew) {
+        $choice = Read-Host "Launch TUI now? (y/n)"
+        if ($choice -eq "y") { openclaw tui --message "Wake up, my friend!" }
     }
-
-    Log-Success "Setup complete! Enjoy your Chutes-powered OpenClaw."
-} catch {
-    Log-Error $_.Exception.Message
-}
+    Log-Success "Setup complete!"
+} catch { Log-Error $_.Exception.Message }

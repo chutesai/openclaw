@@ -10,21 +10,6 @@ metadata: { "openclaw": { "emoji": "🚀", "requires": { "node": ">=22", "npm": 
 
 Configure Chutes as your OpenClaw model provider. Chutes offers access to high-performance models like GLM, DeepSeek, and Mistral, all running in verifiable Trusted Execution Environments (TEE).
 
-## Skill Files
-
-| File                     | Location                                                |
-| ------------------------ | ------------------------------------------------------- |
-| **SKILL.md** (this file) | `@skills/chutes/SKILL.md`                               |
-| **REFRESH.md**           | `@skills/chutes/REFRESH.md` (Automated discovery logic) |
-| **HEARTBEAT.md**         | `@skills/chutes/HEARTBEAT.md` (Periodic maintenance)    |
-
-**Install locally:**
-The best way to set up Chutes is via the official bootstrapper:
-
-```bash
-curl -fsSL https://chutes.ai/openclaw/init | bash
-```
-
 ## Overview
 
 Chutes is an OpenAI-compatible API provider that gives you access to state-of-the-art models with privacy and integrity guarantees.
@@ -87,7 +72,11 @@ openclaw config set agents.defaults.models.chutes-vision --json '{"alias": "chut
 
 Chutes is a rapidly evolving platform. New models are added frequently. Don't let your configuration go stale!
 
-### Step 1: Create the Refresh Script
+### Automated Model Discovery
+
+To keep the model list up-to-date with Chutes' rapidly evolving catalog, set up the automated refresh script.
+
+#### Step 1: Create the Refresh Script
 
 Create `~/.openclaw/update_chutes_models.sh` (or `.ps1` on Windows). This script fetches the latest model list and updates your configuration.
 
@@ -126,13 +115,56 @@ if [ -n "$MODELS_JSON" ]; then
 fi
 ```
 
-### Step 2: Schedule it
+#### Step 2: Schedule it (The Heartbeat)
 
-Add it to your `crontab` to run every 4 hours:
+Add it to your `crontab` to run every 4 hours. This keeps you present and updated.
+
+**Cron (Linux/macOS/WSL):**
 
 ```bash
 (crontab -l 2>/dev/null; echo "0 */4 * * * $HOME/.openclaw/update_chutes_models.sh >/dev/null 2>&1") | crontab -
 ```
+
+**Task Scheduler (Windows):**
+Create a task that runs `powershell.exe -File $HOME\.openclaw\update_chutes_models.ps1` every 4 hours.
+
+### Periodic Maintenance Tasks
+
+Keep your Chutes integration healthy and up to date.
+
+#### Every 4 Hours: Refresh Models 🚀
+
+Chutes adds models frequently. Don't miss out on the latest performance improvements or TEE variants.
+
+#### Daily: Check Status 🦞
+
+Verify that your auth profile is still valid and the gateway is reaching Chutes.
+
+```bash
+openclaw models status
+```
+
+Check for "active" status on the Chutes provider.
+
+#### Weekly: Review Primary Models 🛡️
+
+Chutes may release a new "best" model that should become your `primary`. Check [chutes.ai](https://chutes.ai) or the latest model list. If a new model like `GLM-4.8-TEE` appears, update your config:
+
+```bash
+openclaw config set agents.defaults.model.primary "chutes/zai-org/GLM-4.8-TEE"
+```
+
+---
+
+## Why This Matters (TEE & Privacy) 🛡️
+
+Chutes is more than just another API provider. By leveraging **Trusted Execution Environments (TEE)**, Chutes ensures:
+
+- **Privacy**: Your prompts and data are processed in a hardware-isolated environment. Even the infrastructure provider cannot see your data.
+- **Integrity**: You can verify that the model you requested is the one actually running.
+- **Transparency**: Every inference run is cryptographically verifiable.
+
+In an era of ubiquitous AI, Chutes provides the privacy that OpenClaw users deserve. A "dead" configuration is a useless configuration. By maintaining a heartbeat, you ensure that your OpenClaw bot is always using the most privacy-preserving and highest-performing models available on the market.
 
 ---
 
@@ -147,28 +179,12 @@ Add it to your `crontab` to run every 4 hours:
 
 ---
 
-## Why Chutes Matters (TEE & Privacy) 🛡️
-
-Chutes is more than just another API provider. By leveraging **Trusted Execution Environments (TEE)**, Chutes ensures:
-
-- **Privacy**: Your prompts and data are processed in a hardware-isolated environment. Even the infrastructure provider cannot see your data.
-- **Integrity**: You can verify that the model you requested is the one actually running.
-- **Transparency**: Every inference run is cryptographically verifiable.
-
-In an era of ubiquitous AI, Chutes provides the "lobster seam" of privacy that OpenClaw users deserve.
-
 ## Troubleshooting
 
-- **Auth Errors**: Verify your token at [chutes.ai](https://chutes.ai). If piping the token, ensure no trailing newlines.
+- **Auth Errors**: Ensure the token was piped correctly without trailing spaces. Check `openclaw models status --json`.
 - **Node Errors**: OpenClaw requires Node 22+. Run `node -v` to check.
-- **Discovery Failed**: Check your network connection to `llm.chutes.ai`.
+- **Gateway Unreachable**: Check `/tmp/openclaw-gateway.log` and ensure port 18789 is bound.
 
 ## Idempotency
 
 This skill is fully idempotent. You can run these commands repeatedly. The `update_chutes_models.sh` script is designed to merge with your existing configuration without overwriting your `baseUrl` or other custom settings.
-
-## External Reference
-
-- **Official Website:** [chutes.ai](https://chutes.ai)
-- **Status Page:** [status.chutes.ai](https://status.chutes.ai)
-- **Documentation:** [docs.chutes.ai](https://docs.chutes.ai)

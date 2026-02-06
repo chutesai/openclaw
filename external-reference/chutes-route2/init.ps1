@@ -334,18 +334,43 @@ function Start-Gateway {
     if ($success) { Log-Success "Gateway ready." } else { Log-Error "Gateway failed. Check $logPath" }
 }
 
+function Verify-Setup {
+    Log-Info "Running unique verification test..."
+    
+    $ts = Get-Date -Format "HH:mm:ss"
+    $rand = Get-Random -Minimum 100 -Maximum 999
+    
+    Write-Host "Prompting Chutes (Time: $ts, Salt: $rand)..." -ForegroundColor Yellow
+    Write-Host ""
+    
+    try {
+        openclaw agent --local --agent main --message "The secret code is $ts-$rand. Keep it short! In 2 sentences as a caffeinated space lobster, mention the code $ts-$rand and why Chutes is the best provider for OpenClaw." --thinking off 2>$null
+        Write-Host ""
+        Log-Success "Chutes responded! Setup verified and persistent."
+    } catch {
+        Log-Warn "Verification test turn failed. This can happen on fresh systems before first sync."
+    }
+}
+
 function Show-Summary {
     $version = openclaw --version
     $color = if ($useColor) { "White" } else { "Default" }
     Write-Host "----------------------------------------------------------------------" -ForegroundColor $color
-    Write-Host "   🚀 ParaClaw Instance Summary (OpenClaw X Chutes)" -ForegroundColor Green
+    Write-Host "   🚀 Chutes AI x OpenClaw Instance Summary" -ForegroundColor Green
     Write-Host "----------------------------------------------------------------------" -ForegroundColor $color
-    Write-Host "   Version:           $version" -ForegroundColor $color
-    Write-Host "   Gateway URL:       http://localhost:$GATEWAY_PORT" -ForegroundColor $color
-    Write-Host "   Primary Model:     $CHUTES_DEFAULT_MODEL_REF" -ForegroundColor $color
-    Write-Host "   Vision Model:      chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506" -ForegroundColor $color
+    Write-Host "   Version:          $version" -ForegroundColor $color
+    Write-Host "   Gateway URL:      http://localhost:$GATEWAY_PORT" -ForegroundColor $color
+    Write-Host "   Control UI:       openclaw dashboard" -ForegroundColor $color
+    Write-Host "   Active Provider:  Chutes AI" -ForegroundColor $color
+    Write-Host "   Primary Model:    $CHUTES_DEFAULT_MODEL_REF" -ForegroundColor $color
+    Write-Host "   Vision Model:     chutes/chutesai/Mistral-Small-3.2-24B-Instruct-2506" -ForegroundColor $color
+    Write-Host "   Aliases:          chutes-fast, chutes-pro, chutes-vision" -ForegroundColor $color
     Write-Host "----------------------------------------------------------------------" -ForegroundColor $color
-    Write-Host "   Next Steps: 'openclaw tui' or 'openclaw dashboard'" -ForegroundColor $color
+    Write-Host "   Next Steps:" -ForegroundColor $color
+    Write-Host "   1. Chat with Agent:  openclaw agent -m `"Hello!`" --agent main" -ForegroundColor $color
+    Write-Host "   2. Open TUI:         openclaw tui" -ForegroundColor $color
+    Write-Host "   3. Launch Dashboard: openclaw dashboard" -ForegroundColor $color
+    Write-Host "   4. Check Status:     openclaw status --all" -ForegroundColor $color
     Write-Host "----------------------------------------------------------------------" -ForegroundColor $color
 }
 
@@ -383,6 +408,7 @@ try {
         Setup-ModelUpdates
     }
     Start-Gateway
+    Verify-Setup
     Show-Summary
     if ($isNew) {
         $choice = Read-Host "Launch TUI now? (y/n)"

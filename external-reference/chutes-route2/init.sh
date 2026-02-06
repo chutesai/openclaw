@@ -221,10 +221,10 @@ check_node_version() {
     fi
 
     if command -v nvm >/dev/null 2>&1; then
-      log_info "Installing Node.js 22 via nvm..."
-      nvm install 22
-      nvm use 22
-      nvm alias default 22
+      log_info "Installing Node.js via nvm..."
+      nvm install node
+      nvm use node
+      nvm alias default node
     else
       log_warn "nvm installation failed or could not be sourced. Falling back to system package managers."
       # Existing fallback logic

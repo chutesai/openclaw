@@ -96,7 +96,12 @@ function Add-ChutesAuth {
         $env:CHUTES_API_KEY | openclaw models auth paste-token --provider chutes 2>$null
     } else {
         Log-Info "Redirecting to OpenClaw's official auth helper..."
-        openclaw models auth paste-token --provider chutes
+        # Read token from the console (works even when script is piped)
+        $secureToken = Read-Host -Prompt "Paste token for chutes" -AsSecureString
+        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
+        $plainToken = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+        $plainToken | openclaw models auth paste-token --provider chutes 2>$null
         Write-Host -NoNewline "$([char]27)[12A$([char]27)[J"
     }
     Log-Success "Chutes authentication added."

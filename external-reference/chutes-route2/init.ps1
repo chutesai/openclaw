@@ -15,7 +15,9 @@ foreach ($arg in $args) {
 
 # Constants
 $CHUTES_BASE_URL = "https://llm.chutes.ai/v1"
+$CHUTES_DEFAULT_MODEL_ID = "zai-org/GLM-4.7-TEE"
 $CHUTES_DEFAULT_MODEL_REF = "chutes/zai-org/GLM-4.7-TEE"
+$CHUTES_FAST_MODEL_ID = "zai-org/GLM-4.7-Flash"
 $CHUTES_FAST_MODEL_REF = "chutes/zai-org/GLM-4.7-Flash"
 $GATEWAY_PORT = 18789
 
@@ -388,7 +390,7 @@ try {
     Write-Host "/ /___| | (_| |\ V  V / " -ForegroundColor $color2
     Write-Host -NoNewline "\/    \__,_|_|  \__,_" -ForegroundColor $color
     Write-Host "\____/|_|\__,_| \_/\_/  " -ForegroundColor $color2
-    Write-Host "          OpenClaw X Chutes"
+    Write-Host "          OpenClaw X Chutes.ai"
     Check-NodeVersion
     $isNew = $false
     if (!(Check-OpenClawInstalled) -or !(Test-Path (Join-Path $HOME ".openclaw\openclaw.json"))) { $isNew = $true }

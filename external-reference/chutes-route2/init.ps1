@@ -41,33 +41,44 @@ function Log-Error($msg) {
 function Check-NodeVersion {
     Log-Info "Checking Node.js and npm version..."
     
-    # If node is present but npm is missing (unusual on Windows)
-    if ((Get-Command node -ErrorAction SilentlyContinue) -and !(Get-Command npm -ErrorAction SilentlyContinue)) {
-        Log-Warn "npm not found but Node.js is present. Attempting to repair via winget..."
-        if (Get-Command winget -ErrorAction SilentlyContinue) {
-            winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
-        } else {
-            Log-Error "npm is missing and winget is not available to repair. Please reinstall Node.js from https://nodejs.org."
-        }
+    $nodeOk = $false
+    if (Get-Command node -ErrorAction SilentlyContinue) {
+        $nodeVer = node -v
+        $major = [int]($nodeVer -replace 'v', '' -split '\.')[0]
+        if ($major -ge 22) { $nodeOk = $true }
     }
 
-    if (!(Get-Command node -ErrorAction SilentlyContinue)) {
-        Log-Info "Node.js not found. Attempting install via winget..."
+    if (!$nodeOk) {
+        Log-Info "Node.js 22+ not found. Attempting install via winget..."
         if (Get-Command winget -ErrorAction SilentlyContinue) {
+            # Check for NVM for Windows specifically if user prefers it, 
+            # but for automation winget's Node package is more direct.
+            Log-Info "Installing Node.js LTS via winget..."
             winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+            
+            # Refresh path environment variable
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
         } else {
             Log-Error "Node.js is not installed and winget is not available. Please visit https://nodejs.org to install Node.js 22+."
         }
     }
 
-    if (!(Get-Command npm -ErrorAction SilentlyContinue)) {
-        Log-Error "npm is not installed. OpenClaw requires npm for global installation. Please install Node.js which includes npm."
+    if (!(Get-Command node -ErrorAction SilentlyContinue)) {
+        Log-Error "Node.js install failed or not found in PATH. Please restart your terminal."
     }
 
+    if (!(Get-Command npm -ErrorAction SilentlyContinue)) {
+        Log-Error "npm is not installed. Please install Node.js which includes npm."
+    }
+
+    Log-Info "Updating npm to latest version..."
+    npm install -g npm@latest 2>$null
+    
     $nodeVer = node -v
+    $npmVer = npm -v
     $major = [int]($nodeVer -replace 'v', '' -split '\.')[0]
     if ($major -lt 22) { Log-Error "Node.js version $nodeVer is too old. Need Node.js 22+." }
-    Log-Success "Node.js version $nodeVer OK."
+    Log-Success "Node.js version $nodeVer OK (npm $npmVer)."
 }
 
 function Check-OpenClawInstalled {

@@ -189,30 +189,70 @@ GATEWAY_LOG="${TEMP_DIR}/openclaw-gateway.log"
 
 check_node_version() {
   log_info "Checking Node.js and npm version..."
-  
-  # Check if npm is missing but node is present (common on some minimal Linux distros)
-  if command -v node >/dev/null 2>&1 && ! command -v npm >/dev/null 2>&1; then
-    log_warn "npm not found. Attempting to install npm..."
-    if command -v apt-get >/dev/null 2>&1; then
-      sudo apt-get update && sudo apt-get install -y npm || log_error "Failed to install npm via apt-get."
-    elif command -v apk >/dev/null 2>&1; then
-      sudo apk add npm || log_error "Failed to install npm via apk."
-    elif command -v yum >/dev/null 2>&1; then
-      sudo yum install -y npm || log_error "Failed to install npm via yum."
-    elif command -v brew >/dev/null 2>&1; then
-      brew install node || log_error "Failed to install node/npm via brew."
+
+  local node_ok=0
+  if command -v node >/dev/null 2>&1; then
+    NODE_VERSION=$(node -v | cut -d'v' -f2)
+    MAJOR_VERSION=$(echo "$NODE_VERSION" | cut -d'.' -f1)
+    if [ "$MAJOR_VERSION" -ge 22 ]; then
+      node_ok=1
+    fi
+  fi
+
+  if [ "$node_ok" -eq 0 ]; then
+    log_info "Node.js 22+ not found. Attempting to install via nvm..."
+    
+    # Check if nvm is already there but not in path
+    if [ -f "$HOME/.nvm/nvm.sh" ]; then
+      # shellcheck source=/dev/null
+      . "$HOME/.nvm/nvm.sh"
+    elif [ -f "/usr/local/opt/nvm/nvm.sh" ]; then
+      # shellcheck source=/dev/null
+      . "/usr/local/opt/nvm/nvm.sh"
+    fi
+
+    if ! command -v nvm >/dev/null 2>&1; then
+      log_info "Installing nvm..."
+      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+      export NVM_DIR="$HOME/.nvm"
+      # shellcheck source=/dev/null
+      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+    fi
+
+    if command -v nvm >/dev/null 2>&1; then
+      log_info "Installing Node.js 22 via nvm..."
+      nvm install 22
+      nvm use 22
+      nvm alias default 22
     else
-      log_error "npm is missing and could not be automatically installed. Please install Node.js (includes npm)."
+      log_warn "nvm installation failed or could not be sourced. Falling back to system package managers."
+      # Existing fallback logic
+      if command -v node >/dev/null 2>&1 && ! command -v npm >/dev/null 2>&1; then
+        log_warn "npm not found. Attempting to install npm..."
+        if command -v apt-get >/dev/null 2>&1; then
+          sudo apt-get update && sudo apt-get install -y npm || true
+        elif command -v apk >/dev/null 2>&1; then
+          sudo apk add npm || true
+        elif command -v yum >/dev/null 2>&1; then
+          sudo yum install -y npm || true
+        elif command -v brew >/dev/null 2>&1; then
+          brew install node || true
+        fi
+      fi
     fi
   fi
 
   if ! command -v node >/dev/null 2>&1; then
-    log_error "Node.js is not installed. OpenClaw requires Node.js 22+. Visit https://nodejs.org to install it."
+    log_error "Node.js is not installed. OpenClaw requires Node.js 22+."
   fi
   
   if ! command -v npm >/dev/null 2>&1; then
-    log_error "npm is not installed. OpenClaw requires npm for global installation. Please install Node.js which includes npm."
+    log_error "npm is not installed. Please install Node.js which includes npm."
   fi
+
+  # Ensure npm is latest
+  log_info "Updating npm to latest version..."
+  npm install -g npm@latest >/dev/null 2>&1 || log_warn "Failed to update npm to latest. Continuing with $(npm -v)"
 
   NODE_VERSION=$(node -v | cut -d'v' -f2)
   MAJOR_VERSION=$(echo "$NODE_VERSION" | cut -d'.' -f1)
@@ -220,7 +260,7 @@ check_node_version() {
   if [ "$MAJOR_VERSION" -lt 22 ]; then
     log_error "Node.js version $NODE_VERSION is too old. OpenClaw requires Node.js 22+."
   fi
-  log_success "Node.js version $NODE_VERSION OK."
+  log_success "Node.js version $NODE_VERSION OK (npm $(npm -v))."
 }
 
 check_openclaw_installed() {

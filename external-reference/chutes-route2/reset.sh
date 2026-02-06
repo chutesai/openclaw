@@ -42,7 +42,14 @@ unset CHUTES_OAUTH_TOKEN
 log_info "Clearing terminal command cache..."
 hash -r 2>/dev/null || true
 
-# 6. Final status check
+# 6. Remove scheduled model update jobs
+log_info "Removing scheduled model update jobs from crontab..."
+if command -v crontab >/dev/null 2>&1; then
+  crontab -l 2>/dev/null | grep -v "update_chutes_models.sh" | crontab - 2>/dev/null || true
+  log_success "Crontab: Cleaned"
+fi
+
+# 7. Final status check
 echo ""
 echo -e "${GREEN}--- RESET COMPLETE ---${NC}"
 if ! command -v openclaw >/dev/null 2>&1; then

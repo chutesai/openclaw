@@ -189,6 +189,23 @@ GATEWAY_LOG="${TEMP_DIR}/openclaw-gateway.log"
 
 check_node_version() {
   log_info "Checking Node.js and npm version..."
+  
+  # Check if npm is missing but node is present (common on some minimal Linux distros)
+  if command -v node >/dev/null 2>&1 && ! command -v npm >/dev/null 2>&1; then
+    log_warn "npm not found. Attempting to install npm..."
+    if command -v apt-get >/dev/null 2>&1; then
+      sudo apt-get update && sudo apt-get install -y npm || log_error "Failed to install npm via apt-get."
+    elif command -v apk >/dev/null 2>&1; then
+      sudo apk add npm || log_error "Failed to install npm via apk."
+    elif command -v yum >/dev/null 2>&1; then
+      sudo yum install -y npm || log_error "Failed to install npm via yum."
+    elif command -v brew >/dev/null 2>&1; then
+      brew install node || log_error "Failed to install node/npm via brew."
+    else
+      log_error "npm is missing and could not be automatically installed. Please install Node.js (includes npm)."
+    fi
+  fi
+
   if ! command -v node >/dev/null 2>&1; then
     log_error "Node.js is not installed. OpenClaw requires Node.js 22+. Visit https://nodejs.org to install it."
   fi
@@ -203,7 +220,7 @@ check_node_version() {
   if [ "$MAJOR_VERSION" -lt 22 ]; then
     log_error "Node.js version $NODE_VERSION is too old. OpenClaw requires Node.js 22+."
   fi
-  log_success "Node.js version $NODE_VERSION detected."
+  log_success "Node.js version $NODE_VERSION OK."
 }
 
 check_openclaw_installed() {

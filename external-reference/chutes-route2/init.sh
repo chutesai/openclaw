@@ -212,8 +212,9 @@ check_node_version() {
     fi
 
     if ! command -v nvm >/dev/null 2>&1; then
-      log_info "Installing nvm..."
-      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+      log_info "Installing nvm (latest version)..."
+      LATEST_NVM=$(curl -s https://api.github.com/repos/nvm-sh/nvm/releases/latest | grep tag_name | cut -d : -f 2 | tr -d ' ", ')
+      curl -o- "https://raw.githubusercontent.com/nvm-sh/nvm/${LATEST_NVM}/install.sh" | bash
       export NVM_DIR="$HOME/.nvm"
       # shellcheck source=/dev/null
       [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"

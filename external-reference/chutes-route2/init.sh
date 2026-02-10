@@ -101,13 +101,21 @@ run_interactive_onboarding() {
   local onboard_log="${TEMP_DIR}/openclaw-onboard.log"
   local onboard_pid_file="${TEMP_DIR}/openclaw-onboard.pid"
   local onboard_guard_flag="${TEMP_DIR}/openclaw-onboard.guard"
+  local has_tty=0
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    has_tty=1
+  fi
+  if [ "$has_tty" -ne 1 ]; then
+    log_warn "No controlling TTY available for interactive onboarding."
+    return 1
+  fi
   : > "$onboard_log"
   rm -f "$onboard_pid_file"
   rm -f "$onboard_guard_flag"
   export OPENCLAW_ONBOARD_PID_FILE="$onboard_pid_file"
+  local onboard_exit=0
 
   local onboard_cmd='echo $$ > "$OPENCLAW_ONBOARD_PID_FILE"; exec openclaw onboard --auth-choice skip --skip-ui'
-  local onboard_exit=0
   local script_mode="none"
   local script_flush_flag=""
   if command -v script >/dev/null 2>&1; then
@@ -130,15 +138,15 @@ run_interactive_onboarding() {
       set +e
       if [ "$script_mode" = "linux" ]; then
         if [ -n "$script_flush_flag" ]; then
-          script -q "$script_flush_flag" -c "bash -c '$onboard_cmd'" "$onboard_log"
+          script -q "$script_flush_flag" -c "bash -c '$onboard_cmd'" "$onboard_log" < /dev/tty
         else
-          script -q -c "bash -c '$onboard_cmd'" "$onboard_log"
+          script -q -c "bash -c '$onboard_cmd'" "$onboard_log" < /dev/tty
         fi
       else
         if [ -n "$script_flush_flag" ]; then
-          script -q "$script_flush_flag" "$onboard_log" bash -c "$onboard_cmd"
+          script -q "$script_flush_flag" "$onboard_log" bash -c "$onboard_cmd" < /dev/tty
         else
-          script -q "$onboard_log" bash -c "$onboard_cmd"
+          script -q "$onboard_log" bash -c "$onboard_cmd" < /dev/tty
         fi
       fi
       onboard_exit=$?
@@ -147,7 +155,7 @@ run_interactive_onboarding() {
       log_warn "script(1) is unavailable for interactive capture; running onboarding without hang guard."
       echo $$ > "$onboard_pid_file"
       set +e
-      openclaw onboard --auth-choice skip --skip-ui
+      openclaw onboard --auth-choice skip --skip-ui < /dev/tty
       onboard_exit=$?
       set -e
     fi
@@ -155,7 +163,7 @@ run_interactive_onboarding() {
     log_warn "script(1) not found; running onboarding without hang guard."
     echo $$ > "$onboard_pid_file"
     set +e
-    openclaw onboard --auth-choice skip --skip-ui
+    openclaw onboard --auth-choice skip --skip-ui < /dev/tty
     onboard_exit=$?
     set -e
   fi
@@ -164,9 +172,7 @@ run_interactive_onboarding() {
     kill "$ONBOARD_GUARD_PID" 2>/dev/null || true
     wait "$ONBOARD_GUARD_PID" 2>/dev/null || true
   fi
-  if [ -t 0 ]; then
-    stty sane 2>/dev/null || true
-  fi
+  stty sane < /dev/tty 2>/dev/null || true
 
   if [ "$onboard_exit" -ne 0 ]; then
     local onboard_completed=0
@@ -554,9 +560,14 @@ EOF
   chmod +x "$update_script"
   log_success "Update script created at $update_script"
 
-  if [ -t 0 ]; then
-    echo -ne "${YELLOW}Would you like to schedule it to run every 4 hours? [N/y]: ${NC}"
-    read -r schedule_cron
+  local has_tty=0
+  if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    has_tty=1
+  fi
+  if [ "$has_tty" -eq 1 ]; then
+    local schedule_cron=""
+    printf "%b" "${YELLOW}Would you like to schedule it to run every 4 hours? [N/y]: ${NC}" > /dev/tty
+    IFS= read -r schedule_cron < /dev/tty || schedule_cron=""
     if [[ "$schedule_cron" =~ ^[Yy]$ ]]; then
       if command -v crontab >/dev/null 2>&1; then
         crontab -l 2>/dev/null | grep -v "update_chutes_models.sh" | crontab - 2>/dev/null || true
@@ -730,12 +741,13 @@ main() {
   verify_setup
   show_summary_card
   
-  if [ "$IS_NEW_USER" -eq 1 ] && [ -t 0 ]; then
-    echo -ne "${YELLOW}Would you like to launch the TUI and talk to your bot now? (y/n): ${NC}"
-    read -r launch_tui
+  if [ "$IS_NEW_USER" -eq 1 ] && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+    local launch_tui=""
+    printf "%b" "${YELLOW}Would you like to launch the TUI and talk to your bot now? (y/n): ${NC}" > /dev/tty
+    IFS= read -r launch_tui < /dev/tty || launch_tui=""
     if [[ "$launch_tui" =~ ^[Yy]$ ]]; then
       log_info "Launching OpenClaw TUI..."
-      openclaw tui --message "Wake up, my friend!"
+      openclaw tui --message "Wake up, my friend!" < /dev/tty > /dev/tty 2>&1
     fi
   fi
 

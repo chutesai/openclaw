@@ -155,6 +155,20 @@ function Add-ChutesAuth {
 }
 
 function Start-OnboardingWithGuard {
+    $stdinRedirected = $false
+    try { $stdinRedirected = [Console]::IsInputRedirected } catch {}
+
+    # When the installer is piped, attach onboarding to the active console explicitly.
+    # This prevents prompt rendering/input glitches caused by inherited redirected stdin.
+    if ($stdinRedirected -and $IsWindows) {
+        Log-Info "Installer input is piped; attaching onboarding to the active console..."
+        cmd.exe /d /c "openclaw onboard --auth-choice skip --skip-ui < CONIN$ > CONOUT$ 2>&1"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Onboarding exited with code $LASTEXITCODE."
+        }
+        return
+    }
+
     $onboardLog = Join-Path $env:TEMP "openclaw-onboard.log"
     $onboardFlag = Join-Path $env:TEMP "openclaw-onboard.guard"
     Remove-Item $onboardLog -Force -ErrorAction SilentlyContinue

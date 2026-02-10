@@ -418,7 +418,12 @@ try {
         Apply-AtomicConfig
         Setup-ModelUpdates
         Log-Info "Launching interactive onboarding..."
-        Start-OnboardingWithGuard
+        try {
+            Start-OnboardingWithGuard
+        } catch {
+            Log-Warn "Interactive onboarding could not run in this environment."
+            Log-Info "You can complete onboarding later by running: openclaw onboard"
+        }
     } else {
         Log-Info "Existing user journey detected..."
         Add-ChutesAuth

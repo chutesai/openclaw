@@ -712,14 +712,11 @@ main() {
     apply_atomic_config
     setup_model_updates
     
-    # Non-interactive onboarding safety check (TTY check)
-    if [ -t 0 ]; then
-      log_info "Launching OpenClaw interactive onboarding..."
-      log_info "Your Chutes configuration has been pre-seeded."
-      # Use --skip-ui to prevent the wizard from launching the TUI/Web UI prematurely.
-    run_interactive_onboarding
-    else
-      log_warn "Non-interactive environment detected. Skipping interactive onboarding."
+    log_info "Launching OpenClaw interactive onboarding..."
+    log_info "Your Chutes configuration has been pre-seeded."
+    # Use --skip-ui to prevent the wizard from launching the TUI/Web UI prematurely.
+    if ! run_interactive_onboarding; then
+      log_warn "Interactive onboarding could not run in this environment."
       log_info "You can complete onboarding later by running: openclaw onboard"
     fi
   else

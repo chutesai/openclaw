@@ -189,6 +189,7 @@ GATEWAY_LOG="${TEMP_DIR}/openclaw-gateway.log"
 
 check_node_version() {
   log_info "Checking Node.js and npm version..."
+  local min_npm_major=10
 
   local node_ok=0
   if command -v node >/dev/null 2>&1; then
@@ -248,12 +249,36 @@ check_node_version() {
   fi
   
   if ! command -v npm >/dev/null 2>&1; then
-    log_error "npm is not installed. Please install Node.js which includes npm."
+    log_info "npm is not installed. Attempting to install npm..."
+    if command -v apt-get >/dev/null 2>&1; then
+      sudo apt-get update && sudo apt-get install -y npm || true
+    elif command -v apk >/dev/null 2>&1; then
+      sudo apk add npm || true
+    elif command -v yum >/dev/null 2>&1; then
+      sudo yum install -y npm || true
+    elif command -v brew >/dev/null 2>&1; then
+      brew install npm || true
+    fi
   fi
 
-  # Ensure npm is latest
-  log_info "Updating npm to latest version..."
-  npm install -g npm@latest >/dev/null 2>&1 || log_warn "Failed to update npm to latest. Continuing with $(npm -v)"
+  if ! command -v npm >/dev/null 2>&1; then
+    log_error "npm is still not installed after install attempt. Please install npm and rerun."
+  fi
+
+  local npm_version npm_major
+  npm_version=$(npm -v)
+  npm_major=$(echo "$npm_version" | cut -d'.' -f1)
+  if [ "$npm_major" -lt "$min_npm_major" ]; then
+    log_info "npm $npm_version is below minimum requirement ($min_npm_major+). Updating npm..."
+    if ! npm install -g "npm@${min_npm_major}" >/dev/null 2>&1; then
+      log_error "Failed to update npm to required version ($min_npm_major+). Please update npm and rerun."
+    fi
+    npm_version=$(npm -v)
+    npm_major=$(echo "$npm_version" | cut -d'.' -f1)
+    if [ "$npm_major" -lt "$min_npm_major" ]; then
+      log_error "npm version $npm_version is still below required version ($min_npm_major+)."
+    fi
+  fi
 
   NODE_VERSION=$(node -v | cut -d'v' -f2)
   MAJOR_VERSION=$(echo "$NODE_VERSION" | cut -d'.' -f1)
@@ -261,7 +286,7 @@ check_node_version() {
   if [ "$MAJOR_VERSION" -lt 22 ]; then
     log_error "Node.js version $NODE_VERSION is too old. OpenClaw requires Node.js 22+."
   fi
-  log_success "Node.js version $NODE_VERSION OK (npm $(npm -v))."
+  log_success "Node.js version $NODE_VERSION OK. npm installed and meets requirements (npm $npm_version)."
 }
 
 check_openclaw_installed() {
@@ -669,7 +694,7 @@ main() {
   echo -e "${WHITE} / /_)/ _\` | '__/ _\` |${RED}/ /  | |/ _\` \\\\ \\\\ /\\\\ / /"
   echo -e "${WHITE}/ ___/ (_| | | | (_| ${RED}/ /___| | (_| |\\\\ V  V / "
   echo -e "${WHITE}\\\\/    \\\\__,_|_|  \\\\__,_${RED}\\\\____/|_|\\\\__,_| \\\\_/\\\\_/  "
-  echo -e "          ${NC}OpenClaw X Chutes.ai"
+  echo -e "          ${NC}🦞 OpenClaw X Chutes.ai 🪂"
   echo ""
   
   check_node_version

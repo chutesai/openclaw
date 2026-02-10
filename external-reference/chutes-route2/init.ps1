@@ -42,6 +42,7 @@ function Log-Error($msg) {
 
 function Check-NodeVersion {
     Log-Info "Checking Node.js and npm version..."
+    $minNpmMajor = 10
     
     $nodeOk = $false
     if (Get-Command node -ErrorAction SilentlyContinue) {
@@ -70,17 +71,32 @@ function Check-NodeVersion {
     }
 
     if (!(Get-Command npm -ErrorAction SilentlyContinue)) {
-        Log-Error "npm is not installed. Please install Node.js which includes npm."
+        Log-Info "npm is not installed. Attempting to install npm..."
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            winget install OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+            $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+        }
     }
 
-    Log-Info "Updating npm to latest version..."
-    npm install -g npm@latest 2>$null
-    
+    if (!(Get-Command npm -ErrorAction SilentlyContinue)) {
+        Log-Error "npm is still not installed after install attempt. Please install npm and rerun."
+    }
+
     $nodeVer = node -v
     $npmVer = npm -v
+    $npmMajor = [int](($npmVer -split '\.')[0])
     $major = [int]($nodeVer -replace 'v', '' -split '\.')[0]
     if ($major -lt 22) { Log-Error "Node.js version $nodeVer is too old. Need Node.js 22+." }
-    Log-Success "Node.js version $nodeVer OK (npm $npmVer)."
+    if ($npmMajor -lt $minNpmMajor) {
+        Log-Info "npm $npmVer is below minimum requirement ($minNpmMajor+). Updating npm..."
+        npm install -g "npm@$minNpmMajor" 2>$null
+        $npmVer = npm -v
+        $npmMajor = [int](($npmVer -split '\.')[0])
+        if ($npmMajor -lt $minNpmMajor) {
+            Log-Error "npm version $npmVer is still below required version ($minNpmMajor+)."
+        }
+    }
+    Log-Success "Node.js version $nodeVer OK. npm installed and meets requirements (npm $npmVer)."
 }
 
 function Check-OpenClawInstalled {

@@ -86,5 +86,6 @@ bash external-reference/chutes-route2/reset.sh
 ## Technical Notes
 
 - The bootstrap script uses `--auth-choice skip` for the core onboarding wizard to prevent redundant auth prompts, as it handles Chutes auth securely beforehand.
+- Dependency checks enforce minimum versions only: Node.js 22+ and npm 10+. npm is only installed/updated when missing or below minimum (no forced `npm@latest` upgrades).
 - All configuration updates are schema-validated using official CLI tools.
 - A beautiful instance summary card is displayed at the end of every successful setup.

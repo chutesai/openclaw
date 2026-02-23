@@ -594,8 +594,16 @@ start_gateway() {
   sleep 1
   
   log_info "Starting OpenClaw gateway..."
-  # Redirect to a portable log path
+  # Keep original startup path; if nohup fails in piped installs, fallback.
   nohup openclaw gateway run --bind loopback --port "$GATEWAY_PORT" > "$GATEWAY_LOG" 2>&1 &
+  sleep 0.2
+  if ! kill -0 "$!" 2>/dev/null; then
+    if command -v setsid >/dev/null 2>&1; then
+      setsid openclaw gateway run --bind loopback --port "$GATEWAY_PORT" < /dev/null > "$GATEWAY_LOG" 2>&1 &
+    else
+      openclaw gateway run --bind loopback --port "$GATEWAY_PORT" < /dev/null > "$GATEWAY_LOG" 2>&1 &
+    fi
+  fi
   local gateway_pid=$!
   
   # Wait for gateway to start

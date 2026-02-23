@@ -155,20 +155,6 @@ function Add-ChutesAuth {
 }
 
 function Start-OnboardingWithGuard {
-    $stdinRedirected = $false
-    try { $stdinRedirected = [Console]::IsInputRedirected } catch {}
-
-    # When the installer is piped, attach onboarding to the active console explicitly.
-    # This prevents prompt rendering/input glitches caused by inherited redirected stdin.
-    if ($stdinRedirected -and $IsWindows) {
-        Log-Info "Installer input is piped; attaching onboarding to the active console..."
-        cmd.exe /d /c "openclaw onboard --auth-choice skip --skip-ui < CONIN$ > CONOUT$ 2>&1"
-        if ($LASTEXITCODE -ne 0) {
-            throw "Onboarding exited with code $LASTEXITCODE."
-        }
-        return
-    }
-
     $onboardLog = Join-Path $env:TEMP "openclaw-onboard.log"
     $onboardFlag = Join-Path $env:TEMP "openclaw-onboard.guard"
     Remove-Item $onboardLog -Force -ErrorAction SilentlyContinue
@@ -235,6 +221,30 @@ function Start-OnboardingWithGuard {
         }
         throw "Onboarding exited with code $exitCode."
     }
+}
+
+function Read-YesNoPrompt {
+    param(
+        [string]$Message,
+        [bool]$DefaultYes = $false
+    )
+
+    $stdinRedirected = $false
+    try { $stdinRedirected = [Console]::IsInputRedirected } catch {}
+
+    if ($stdinRedirected -and $IsWindows) {
+        $choiceLabel = if ($DefaultYes) { "[Y/n]" } else { "[N/y]" }
+        $promptText = "$Message $choiceLabel"
+        cmd.exe /d /c "choice /c YN /n /m `"$promptText`" < CONIN$ > CONOUT$"
+        $exitCode = $LASTEXITCODE
+        Write-Host ""
+        return ($exitCode -eq 1)
+    }
+
+    $choiceLabel = if ($DefaultYes) { "[Y/n]" } else { "[N/y]" }
+    $choice = Read-Host "$Message $choiceLabel"
+    if ([string]::IsNullOrWhiteSpace($choice)) { return $DefaultYes }
+    return ($choice -match "^[Yy]$")
 }
 
 function Apply-AtomicConfig {
@@ -333,8 +343,7 @@ if (`$modelsJson) {
     $content | Set-Content -Path $updateScript -Force
     Log-Success "Update script created at $updateScript"
 
-    $choice = Read-Host "Would you like to schedule it to run every 4 hours? [N/y]"
-    if ($choice -eq "y") {
+    if (Read-YesNoPrompt -Message "Would you like to schedule it to run every 4 hours?" -DefaultYes $false) {
         if (Get-Command crontab -ErrorAction SilentlyContinue) {
             # Linux/WSL/GitBash environment
             $job = "0 */4 * * * powershell.exe -ExecutionPolicy Bypass -File `"$updateScript`" >/dev/null 2>&1"
@@ -344,6 +353,8 @@ if (`$modelsJson) {
         } else {
             Log-Warn "crontab not found. Auto-updates not scheduled. You can run the script manually: powershell -File $updateScript"
         }
+    } else {
+        Log-Info "Skipping crontab scheduling."
     }
 }
 
@@ -448,8 +459,9 @@ try {
     Verify-Setup
     Show-Summary
     if ($isNew) {
-        $choice = Read-Host "Launch TUI now? (y/n)"
-        if ($choice -eq "y") { openclaw tui --message "Wake up, my friend!" }
+        if (Read-YesNoPrompt -Message "Launch TUI now?" -DefaultYes $false) {
+            openclaw tui --message "Wake up, my friend!"
+        }
     }
     Log-Success "Setup complete!"
 } catch { Log-Error $_.Exception.Message }

@@ -2,6 +2,7 @@ import amazonBedrockPlugin from "../../../extensions/amazon-bedrock/index.js";
 import anthropicPlugin from "../../../extensions/anthropic/index.js";
 import bravePlugin from "../../../extensions/brave/index.js";
 import byteplusPlugin from "../../../extensions/byteplus/index.js";
+import chutesPlugin from "../../../extensions/chutes/index.js";
 import cloudflareAiGatewayPlugin from "../../../extensions/cloudflare-ai-gateway/index.js";
 import copilotProxyPlugin from "../../../extensions/copilot-proxy/index.js";
 import elevenLabsPlugin from "../../../extensions/elevenlabs/index.js";
@@ -79,6 +80,7 @@ const bundledProviderPlugins: RegistrablePlugin[] = [
   amazonBedrockPlugin,
   anthropicPlugin,
   byteplusPlugin,
+  chutesPlugin,
   cloudflareAiGatewayPlugin,
   copilotProxyPlugin,
   githubCopilotPlugin,
@@ -175,6 +177,19 @@ export function requireProviderContractProvider(providerId: string): ProviderPlu
     throw new Error(`provider contract entry missing for ${providerId}`);
   }
   return provider;
+}
+
+export function resolveProviderContractPluginIdsForProvider(
+  providerId: string,
+): string[] | undefined {
+  const pluginIds = [
+    ...new Set(
+      providerContractRegistry
+        .filter((entry) => entry.provider.id === providerId)
+        .map((entry) => entry.pluginId),
+    ),
+  ];
+  return pluginIds.length > 0 ? pluginIds : undefined;
 }
 
 export function resolveProviderContractProvidersForPluginIds(
